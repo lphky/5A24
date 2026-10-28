@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100 select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minesweeper: Frontline Hazard (扫雷：前线危机)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for WWII Military Terminal Look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Share+Tech+Mono&family=Teko:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['"Share Tech Mono"', 'monospace'],
+                        stencil: ['"Black Ops One"', 'cursive'],
+                        teko: ['"Teko"', 'sans-serif'],
+                    },
+                    colors: {
+                        tactical: {
+                            bg: '#121516',
+                            card: '#1a1e20',
+                            panel: '#23292c',
+                            border: '#374247',
+                            amber: '#ffb703',
+                            amberDark: '#b38000',
+                            red: '#e63946',
+                            olive: '#3a4a34',
+                            oliveDark: '#243020',
+                            green: '#2a9d8f'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom Scanline & Grid Effect */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 21, 22, 0) 50%, 
+                rgba(0, 0, 0, 0.35) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.03),
+                rgba(0, 255, 0, 0.01),
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        .battlefield-grid {
+            background-image: 
+                radial-gradient(circle, rgba(255,183,3,0.15) 1px, transparent 1px),
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 20px 20px, 40px 40px, 40px 40px;
+        }
+
+        /* LED Lamp Glows */
+        .led-green { box-shadow: 0 0 8px #2a9d8f, inset 0 0 4px #fff; }
+        .led-amber { box-shadow: 0 0 8px #ffb703, inset 0 0 4px #fff; }
+        .led-red { box-shadow: 0 0 10px #e63946, inset 0 0 4px #fff; animation: pulse-red 0.8s infinite alternate; }
+
+        @keyframes pulse-red {
+            from { opacity: 0.4; box-shadow: 0 0 4px #e63946; }
+            to { opacity: 1; box-shadow: 0 0 14px #e63946; }
+        }
+
+        /* Screen Shake Effect */
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,-97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 1px, 0); }
+            20%, 80% { transform: translate3d(4px, -2px, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 3px, 0); }
+            40%, 60% { transform: translate3d(6px, -3px, 0); }
+        }
+
+        /* Soldier Hit Flash & Animations */
+        .soldier-hit {
+            filter: brightness(2.5) drop-shadow(0 0 8px #e63946) !important;
+            transform: scale(0.92) translateY(2px) !important;
+        }
+
+        .soldier-dying {
+            pointer-events: none;
+            animation: soldier-fall 0.4s forwards ease-out;
+        }
+
+        @keyframes soldier-fall {
+            0% { transform: scale(1) rotate(0deg); opacity: 1; }
+            50% { transform: scale(0.8) rotate(45deg) translateY(10px); opacity: 0.7; }
+            100% { transform: scale(0.5) rotate(90deg) translateY(20px); opacity: 0; }
+        }
+
+        /* Tactical Crosshair Cursor */
+        .crosshair-cursor {
+            cursor: crosshair;
+        }
+
+        /* Muzzle Flash Anim */
+        .muzzle-flash {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            background: radial-gradient(circle, #fff 10%, #ffb703 40%, rgba(230,57,70,0.8) 70%, transparent 100%);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: flash-fade 0.15s ease-out forwards;
+            transform: translate(-50%, -50%);
+            z-index: 40;
+        }
+
+        @keyframes flash-fade {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+        }
+
+        /* Stuka Plane Animation */
+        @keyframes stuka-flyby {
+            0% { transform: translate(-20%, -20%) rotate(25deg) scale(0.4); opacity: 0; }
+            20% { opacity: 0.9; }
+            80% { opacity: 0.9; }
+            100% { transform: translate(120%, 120%) rotate(25deg) scale(1.5); opacity: 0; }
+        }
+        .stuka-anim {
+            animation: stuka-flyby 1.8s ease-in-out forwards;
+        }
+
+        /* Digital LED Display Font Styling */
+        .led-font {
+            font-family: 'Share Tech Mono', monospace;
+            text-shadow: 0 0 6px rgba(255, 183, 3, 0.6);
+        }
+
+        /* Minesweeper Grid styling */
+        .ms-cell {
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background-color 0.05s ease;
+        }
+
+        /* Responsive Scrollbar for Expert Grid */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #121516; }
+        ::-webkit-scrollbar-thumb { background: #374247; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #ffb703; }
+    </style>
+</head>
+<body class="h-full flex flex-col bg-tactical-bg font-mono overflow-x-hidden">
+
+    <!-- Ambient CRT Overlay -->
+    <div class="fixed inset-0 scanlines z-50"></div>
+
+    <!-- TOP COMMAND HEADER NAVBAR -->
+    <header class="bg-tactical-card border-b-2 border-tactical-border px-4 py-2 flex flex-wrap items-center justify-between shadow-lg z-20">
+        <!-- Title & Subtitle -->
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 bg-tactical-amber text-tactical-bg font-stencil text-xl flex items-center justify-center rounded border border-yellow-300 shadow">
+                ⚠️
+            </div>
+            <div>
+                <h1 class="font-stencil text-xl md:text-2xl text-tactical-amber tracking-wider uppercase flex items-center gap-2">
+                    MINESWEEPER: FRONTLINE HAZARD <span class="text-xs font-mono px-2 py-0.5 bg-red-950 border border-red-600 text-red-400 rounded">WWII TACTICAL</span>
+                </h1>
+                <p class="text-xs text-slate-400 tracking-tight">DOUBLE-FRONT COMMAND: DEFEND THE SECTOR & CLEAR THE MINEFIELD</p>
+            </div>
+        </div>
+
+        <!-- Controls / Info -->
+        <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+            <!-- Audio Toggle Button -->
+            <button id="btn-audio" onclick="toggleAudio()" class="px-3 py-1.5 bg-tactical-panel hover:bg-slate-700 border border-tactical-border rounded text-xs font-bold text-tactical-amber flex items-center gap-1.5 transition">
+                <span id="audio-icon">🔊</span> <span id="audio-text">SFX: ON</span>
+            </button>
+
+            <!-- Instructions Modal Toggle -->
+            <button onclick="toggleHelpModal(true)" class="px-3 py-1.5 bg-tactical-panel hover:bg-slate-700 border border-tactical-border rounded text-xs font-bold text-slate-300 flex items-center gap-1 transition">
+                <span>📜</span> RULES
+            </button>
+
+            <!-- Restart Game Button -->
+            <button onclick="resetGame()" class="px-4 py-1.5 bg-tactical-red hover:bg-red-600 text-white font-stencil text-sm rounded border border-red-400 shadow transition active:scale-95">
+                RESTART OPERATION
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN DUAL-PANEL GAME AREA -->
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 md:p-4 max-w-[1600px] w-full mx-auto z-10">
+
+        <!-- ================================================================= -->
+        <!-- LEFT PANEL: FRONTLINE BATTLEFIELD (SHOOTER MECHANIC)             -->
+        <!-- ================================================================= -->
+        <section class="lg:col-span-5 flex flex-col bg-tactical-card border-2 border-tactical-border rounded-lg shadow-xl overflow-hidden relative">
+            <!-- Panel Header / Tactical HUD -->
+            <div class="bg-tactical-panel p-3 border-b border-tactical-border flex items-center justify-between">
+                <div>
+                    <h2 class="font-stencil text-lg text-tactical-amber flex items-center gap-2">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                        FRONTLINE SECTOR (SHOOTER)
+                    </h2>
+                    <p class="text-[11px] text-slate-400">CLICK SOLDIERS TWICE (HP: 2) TO ELIMINATE</p>
+                </div>
+
+                <!-- Threat Meter LED & Status Indicator -->
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider">AIRSTRIKE THREAT</div>
+                        <div id="threat-indicator" class="text-xs font-bold text-emerald-400">LOW THREAT</div>
+                    </div>
+                    <div id="threat-led" class="w-4 h-4 rounded-full bg-emerald-500 led-green"></div>
+                </div>
+            </div>
+
+            <!-- Secondary HUD Stats Bar -->
+            <div class="bg-tactical-bg/80 px-3 py-2 border-b border-tactical-border/60 grid grid-cols-3 gap-2 text-center text-xs">
+                <div class="bg-tactical-panel/80 p-1.5 rounded border border-tactical-border">
+                    <span class="text-slate-400 text-[10px] block">TROOP COUNT</span>
+                    <span id="troop-counter" class="text-lg font-bold led-font text-tactical-amber">0 / 15</span>
+                </div>
+                <div class="bg-tactical-panel/80 p-1.5 rounded border border-tactical-border">
+                    <span class="text-slate-400 text-[10px] block">REINFORCEMENTS IN</span>
+                    <span id="reinforce-timer" class="text-lg font-bold led-font text-emerald-400">04:00</span>
+                </div>
+                <div class="bg-tactical-panel/80 p-1.5 rounded border border-tactical-border">
+                    <span class="text-slate-400 text-[10px] block">TROOPS KILLED</span>
+                    <span id="kills-counter" class="text-lg font-bold led-font text-red-400">0</span>
+                </div>
+            </div>
+
+            <!-- Battlefield Interactive Canvas/Area -->
+            <div id="battlefield" class="flex-1 min-h-[360px] md:min-h-[440px] relative battlefield-grid crosshair-cursor overflow-hidden select-none bg-tactical-oliveDark/40">
+                <!-- Visual Battlefield Elements (Bunkers/Barbed Wire SVG Outlines) -->
+                <div class="absolute inset-0 opacity-15 pointer-events-none flex justify-between items-end p-4">
+                    <!-- Left Bunker -->
+                    <svg width="120" height="80" viewBox="0 0 120 80" fill="none" stroke="#fff" stroke-width="2">
+                        <rect x="10" y="30" width="100" height="50" rx="4" />
+                        <rect x="30" y="40" width="60" height="15" fill="#fff" />
+                        <line x1="0" y1="80" x2="120" y2="80" stroke-width="4" />
+                    </svg>
+                    <!-- Watchtower outline right -->
+                    <svg width="80" height="140" viewBox="0 0 80 140" fill="none" stroke="#fff" stroke-width="2">
+                        <line x1="20" y1="140" x2="30" y2="20" />
+                        <line x1="60" y1="140" x2="50" y2="20" />
+                        <rect x="20" y="10" width="40" height="20" />
+                        <polygon points="15,10 40,0 65,10" />
+                    </svg>
+                </div>
+
+                <!-- Danger / Overrun Warning Screen Banner (hidden by default) -->
+                <div id="warning-banner" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-900/90 border-2 border-red-500 text-white font-stencil px-4 py-1.5 rounded shadow-2xl text-center z-30 animate-bounce">
+                    ⚠️ CRITICAL WARNING: AIRSTRIKE IMMINENT! REDUCE TROOPS!
+                </div>
+
+                <!-- Reinforcements Arrived Flash Banner -->
+                <div id="reinforcement-alert" class="hidden absolute top-12 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black font-stencil px-6 py-2 rounded-lg shadow-2xl text-center z-30 animate-pulse border-2 border-black">
+                    ⚡ GERMAN REINFORCEMENTS ARRIVED! SPAWN RATE DOUBLED!
+                </div>
+
+                <!-- Dynamic German Soldiers will be rendered here -->
+                <div id="soldier-container" class="absolute inset-0"></div>
+            </div>
+
+            <!-- Battlefield Bottom Status Bar -->
+            <div class="bg-tactical-panel p-2 border-t border-tactical-border text-[11px] text-slate-400 flex justify-between items-center px-3">
+                <span>TARGETING SYSTEM: READY</span>
+                <span id="spawn-status-text" class="text-tactical-amber">SPAWN RATE: 1 / 15 SEC</span>
+            </div>
+        </section>
+
+
+        <!-- ================================================================= -->
+        <!-- RIGHT PANEL: TACTICAL MINEFIELD (CLASSIC MINESWEEPER)            -->
+        <!-- ================================================================= -->
+        <section class="lg:col-span-7 flex flex-col bg-tactical-card border-2 border-tactical-border rounded-lg shadow-xl overflow-hidden">
+            <!-- Panel Header -->
+            <div class="bg-tactical-panel p-3 border-b border-tactical-border flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <h2 class="font-stencil text-lg text-tactical-amber flex items-center gap-2">
+                        <span>💣</span> TACTICAL MINEFIELD (MINESWEEPER)
+                    </h2>
+                    <p class="text-[11px] text-slate-400">CLEAR ALL NON-MINE SECTORS TO WIN THE BATTLE</p>
+                </div>
+
+                <!-- Difficulty Selector Buttons -->
+                <div class="flex items-center space-x-1 bg-tactical-bg p-1 rounded border border-tactical-border">
+                    <button onclick="setDifficulty('easy')" id="diff-easy" class="px-2.5 py-1 text-xs font-bold rounded transition">EASY (9x9)</button>
+                    <button onclick="setDifficulty('medium')" id="diff-medium" class="px-2.5 py-1 text-xs font-bold rounded transition">MED (16x16)</button>
+                    <button onclick="setDifficulty('expert')" id="diff-expert" class="px-2.5 py-1 text-xs font-bold rounded transition">EXP (30x16)</button>
+                </div>
+            </div>
+
+            <!-- Minesweeper Header Bar (Mines Counter, Face/Status, Game Timer) -->
+            <div class="bg-tactical-bg px-4 py-3 border-b border-tactical-border flex items-center justify-between shadow-inner">
+                <!-- Mines Left Counter -->
+                <div class="bg-black/80 px-3 py-1.5 rounded border border-tactical-border flex flex-col items-center min-w-[80px]">
+                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">MINES</span>
+                    <span id="mines-counter" class="text-2xl font-bold led-font text-red-500">040</span>
+                </div>
+
+                <!-- Reset / Smiley Status Button -->
+                <button id="face-btn" onclick="resetGame()" class="w-12 h-12 bg-tactical-panel hover:bg-slate-700 border-2 border-tactical-border rounded-lg flex items-center justify-center text-2xl shadow-md transition active:scale-95" title="Click to Reset Sector">
+                    🙂
+                </button>
+
+                <!-- Game Timer Counter -->
+                <div class="bg-black/80 px-3 py-1.5 rounded border border-tactical-border flex flex-col items-center min-w-[80px]">
+                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">TIME</span>
+                    <span id="game-timer" class="text-2xl font-bold led-font text-tactical-amber">000</span>
+                </div>
+            </div>
+
+            <!-- Minefield Grid Display Container -->
+            <div class="flex-1 p-3 md:p-4 bg-tactical-panel/50 flex items-center justify-center overflow-auto min-h-[380px]">
+                <div id="minefield-grid-wrapper" class="inline-block p-2 bg-tactical-bg border-2 border-tactical-border rounded-lg shadow-2xl">
+                    <div id="minefield-grid" class="grid gap-1 select-none">
+                        <!-- Minesweeper Cells dynamically generated -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Controls Hint Bar -->
+            <div class="bg-tactical-panel p-2 border-t border-tactical-border text-[11px] text-slate-400 flex flex-wrap justify-between items-center px-4 gap-2">
+                <span>🖱️ <b>Left Click</b>: Uncover Cell</span>
+                <span>🚩 <b>Right Click</b>: Toggle Flag</span>
+                <span>⚡ <b>Double Click Number</b>: Chord Reveal</span>
+            </div>
+        </section>
+
+    </main>
+
+
+    <!-- ================================================================= -->
+    <!-- OVERLAYS & MODALS                                                 -->
+    <!-- ================================================================= -->
+
+    <!-- STUKA AIRSTRIKE OVERLAY (Triggered on 15 Troops Defeat) -->
+    <div id="airstrike-overlay" class="hidden fixed inset-0 z-50 pointer-events-none flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 bg-red-950/40 animate-pulse"></div>
+        <!-- Shadow Silhouette of German Stuka Plane -->
+        <svg id="stuka-plane" class="absolute w-96 h-96 text-black opacity-0" viewBox="0 0 100 100" fill="currentColor">
+            <!-- Simplified Aircraft Silhouette -->
+            <path d="M50 5 L45 35 L5 45 L5 55 L45 52 L48 85 L35 92 L35 98 L50 95 L65 98 L65 92 L52 85 L55 52 L95 55 L95 45 L55 35 Z" />
+        </svg>
+    </div>
+
+    <!-- GAME OVER / VICTORY MODAL REPORT -->
+    <div id="end-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-tactical-card border-2 border-tactical-amber rounded-lg max-w-md w-full p-6 shadow-2xl relative text-slate-200">
+            <!-- Modal Header -->
+            <div class="text-center border-b border-tactical-border pb-4 mb-4">
+                <div id="modal-icon" class="text-5xl mb-2">💥</div>
+                <h2 id="modal-title" class="font-stencil text-2xl tracking-wide uppercase text-tactical-amber">OPERATION REPORT</h2>
+                <p id="modal-subtitle" class="text-xs text-slate-400 mt-1">SECTOR EVALUATION</p>
+            </div>
+
+            <!-- Stats Table -->
+            <div class="space-y-2.5 text-sm mb-6 bg-tactical-bg p-4 rounded border border-tactical-border">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">OPERATION TIME:</span>
+                    <span id="stat-time" class="font-bold text-tactical-amber font-mono">00:00</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">TROOPS ELIMINATED:</span>
+                    <span id="stat-kills" class="font-bold text-red-400 font-mono">0</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">SHOTS FIRED / ACCURACY:</span>
+                    <span id="stat-accuracy" class="font-bold text-emerald-400 font-mono">0 / 0%</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">MINES DISARMED:</span>
+                    <span id="stat-mines" class="font-bold text-yellow-400 font-mono">0 / 0</span>
+                </div>
+                <div class="flex justify-between items-center border-t border-tactical-border pt-2">
+                    <span class="text-slate-400">FINAL OUTCOME:</span>
+                    <span id="stat-outcome" class="font-bold font-stencil text-red-500">DEFEAT</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
+                <button onclick="resetGame(); toggleEndModal(false);" class="flex-1 py-2.5 bg-tactical-amber hover:bg-yellow-500 text-tactical-bg font-stencil text-lg rounded shadow transition">
+                    RETRY OPERATION
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RULES & INSTRUCTIONS MODAL -->
+    <div id="help-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-tactical-card border-2 border-tactical-border rounded-lg max-w-lg w-full p-6 shadow-2xl relative text-slate-200">
+            <div class="flex justify-between items-center border-b border-tactical-border pb-3 mb-4">
+                <h2 class="font-stencil text-xl text-tactical-amber">MISSION BRIEFING & RULES</h2>
+                <button onclick="toggleHelpModal(false)" class="text-slate-400 hover:text-white text-xl">✕</button>
+            </div>
+
+            <div class="space-y-4 text-xs md:text-sm leading-relaxed text-slate-300">
+                <div class="bg-tactical-panel p-3 rounded border border-tactical-border">
+                    <h3 class="font-bold text-tactical-amber text-sm mb-1">🎯 1. FRONTLINE SHOOTER MECHANICS</h3>
+                    <p>German soldiers enter the battlefield on the left. Each soldier has <b>2 HP</b>. Click on them <b>TWICE</b> to kill them before they gather.</p>
+                </div>
+
+                <div class="bg-tactical-panel p-3 rounded border border-tactical-border">
+                    <h3 class="font-bold text-red-400 text-sm mb-1">🚨 2. AIRSTRIKE THREAT (15 TROOPS)</h3>
+                    <p>If active German troops reach <b>15</b>, they call in a Stuka Airstrike, destroying your base immediately! Keep the troop count low!</p>
+                </div>
+
+                <div class="bg-tactical-panel p-3 rounded border border-tactical-border">
+                    <h3 class="font-bold text-yellow-400 text-sm mb-1">⚡ 3. 4-MINUTE REINFORCEMENTS</h3>
+                    <p>At <b>04:00 minutes</b>, enemy reinforcements arrive! Enemy spawn rate doubles from 15s to 7.5s.</p>
+                </div>
+
+                <div class="bg-tactical-panel p-3 rounded border border-tactical-border">
+                    <h3 class="font-bold text-emerald-400 text-sm mb-1">💣 4. CLASSIC MINESWEEPER</h3>
+                    <p>Clear all safe cells on the right minefield. First click is always safe. Left click to uncover, Right click to flag.</p>
+                </div>
+            </div>
+
+            <button onclick="toggleHelpModal(false)" class="w-full mt-5 py-2 bg-tactical-olive hover:bg-emerald-700 text-white font-stencil text-base rounded shadow transition">
+                UNDERSTOOD, COMMANDER!
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- GAME LOGIC JAVASCRIPT                                             -->
+    <!-- ================================================================= -->
+    <script>
+        /* -----------------------------------------------------------------
+         * 1. SYNTHESIZED AUDIO ENGINE (Web Audio API)
+         * ----------------------------------------------------------------- */
+        const AudioEngine = {
+            ctx: null,
+            muted: false,
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+
+            playGunshot() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+
+                // White Noise Burst
+                const bufferSize = this.ctx.sampleRate * 0.12;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1200, now);
+                filter.Q.setValueAtTime(1.2, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start();
+
+                // Low Thump Envelope
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+
+                oscGain.gain.setValueAtTime(0.7, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.12);
+            },
+
+            playHit() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.08);
+            },
+
+            playDeath() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.2);
+            },
+
+            playClick() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, now);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.03);
+            },
+
+            playFlag() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1100, now);
+                osc.frequency.setValueAtTime(1500, now + 0.04);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.08);
+            },
+
+            playExplosion() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const duration = 1.4;
+
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(600, now);
+                filter.frequency.exponentialRampToValueAtTime(30, now + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(1.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start();
+            },
+
+            playSiren() {
+                if (this.muted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.25);
+                osc.frequency.linearRampToValueAtTime(450, now + 0.5);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.5);
+            }
+        };
+
+        function toggleAudio() {
+            AudioEngine.muted = !AudioEngine.muted;
+            document.getElementById('audio-icon').textContent = AudioEngine.muted ? '🔇' : '🔊';
+            document.getElementById('audio-text').textContent = AudioEngine.muted ? 'SFX: OFF' : 'SFX: ON';
+        }
+
+
+        /* -----------------------------------------------------------------
+         * 2. GAME STATE & VARIABLES
+         * ----------------------------------------------------------------- */
+        const DIFFICULTIES = {
+            easy: { rows: 9, cols: 9, mines: 10 },
+            medium: { rows: 16, cols: 16, mines: 40 },
+            expert: { rows: 16, cols: 30, mines: 99 }
+        };
+
+        let currentDiffKey = 'medium';
+        let currentDiff = DIFFICULTIES.medium;
+
+        // Game Status
+        let gameState = 'READY'; // 'READY', 'PLAYING', 'WON', 'LOST'
+        let gameTime = 0;
+        let gameTimerInterval = null;
+
+        // Stats
+        let shotsFired = 0;
+        let shotsHit = 0;
+        let troopsKilled = 0;
+
+        // Shooter / Battlefield State
+        let soldiers = [];
+        let soldierIdCounter = 0;
+        let spawnTimer = null;
+        let spawnIntervalMs = 15000; // 15 seconds initial
+        let reinforcementsArrived = false;
+        const REINFORCE_THRESHOLD_TIME = 240; // 4 minutes (240 sec)
+
+        // Minesweeper Board
+        let board = []; // 2D grid array
+        let minesGenerated = false;
+        let flagsCount = 0;
+        let revealedCount = 0;
+
+
+        /* -----------------------------------------------------------------
+         * 3. INITIALIZATION & RESTART LOGIC
+         * ----------------------------------------------------------------- */
+        window.addEventListener('load', () => {
+            initBattlefieldClickListener();
+            setDifficulty('medium');
+        });
+
+        function resetGame() {
+            // Clear Intervals
+            clearInterval(gameTimerInterval);
+            clearInterval(spawnTimer);
+
+            // Reset Game Variables
+            gameState = 'READY';
+            gameTime = 0;
+            shotsFired = 0;
+            shotsHit = 0;
+            troopsKilled = 0;
+            soldiers = [];
+            soldierIdCounter = 0;
+            minesGenerated = false;
+            flagsCount = 0;
+            revealedCount = 0;
+            reinforcementsArrived = false;
+            spawnIntervalMs = 15000;
+
+            // UI Elements Reset
+            document.getElementById('face-btn').textContent = '🙂';
+            document.getElementById('game-timer').textContent = '000';
+            document.getElementById('reinforce-timer').textContent = '04:00';
+            document.getElementById('kills-counter').textContent = '0';
+            document.getElementById('warning-banner').classList.add('hidden');
+            document.getElementById('reinforcement-alert').classList.add('hidden');
+            document.getElementById('spawn-status-text').textContent = 'SPAWN RATE: 1 / 15 SEC';
+            document.getElementById('soldier-container').innerHTML = '';
+
+            updateThreatHUD();
+            initMinesweeperBoard();
+
+            // Spawn 1 Initial Soldier right away for immediate action
+            spawnSoldier();
+        }
+
+        function setDifficulty(key) {
+            currentDiffKey = key;
+            currentDiff = DIFFICULTIES[key];
+
+            // Update UI Active Tab
+            ['easy', 'medium', 'expert'].forEach(k => {
+                const btn = document.getElementById(`diff-${k}`);
+                if (k === key) {
+                    btn.className = "px-2.5 py-1 text-xs font-bold rounded bg-tactical-amber text-tactical-bg shadow";
+                } else {
+                    btn.className = "px-2.5 py-1 text-xs font-bold rounded text-slate-400 hover:text-white transition";
+                }
+            });
+
+            resetGame();
+        }
+
+        function startGameTimer() {
+            if (gameState === 'PLAYING') return;
+            gameState = 'PLAYING';
+
+            // Main Game Loop Timer (1 sec tick)
+            gameTimerInterval = setInterval(() => {
+                gameTime++;
+
+                // Update Timer Displays
+                document.getElementById('game-timer').textContent = String(Math.min(gameTime, 999)).padStart(3, '0');
+
+                // Update Reinforcement Countdown
+                const reinforceRemaining = Math.max(0, REINFORCE_THRESHOLD_TIME - gameTime);
+                const rMin = String(Math.floor(reinforceRemaining / 60)).padStart(2, '0');
+                const rSec = String(reinforceRemaining % 60).padStart(2, '0');
+                document.getElementById('reinforce-timer').textContent = `${rMin}:${rSec}`;
+
+                // Check 4-Minute Reinforcement Trigger
+                if (gameTime >= REINFORCE_THRESHOLD_TIME && !reinforcementsArrived) {
+                    triggerReinforcements();
+                }
+
+                // Periodic Warning Siren if troops are high
+                if (soldiers.length >= 13) {
+                    AudioEngine.playSiren();
+                }
+
+            }, 1000);
+
+            // Start Spawner Loop
+            startSpawnerLoop();
+        }
+
+
+        /* -----------------------------------------------------------------
+         * 4. FRONTLINE BATTLEFIELD (SHOOTER) MECHANICS
+         * ----------------------------------------------------------------- */
+        function initBattlefieldClickListener() {
+            const battlefield = document.getElementById('battlefield');
+            battlefield.addEventListener('mousedown', (e) => {
+                if (gameState === 'WON' || gameState === 'LOST') return;
+
+                // Start game if first action
+                if (gameState === 'READY') startGameTimer();
+
+                shotsFired++;
+                AudioEngine.playGunshot();
+
+                // Create Muzzle Flash / Particle Effect
+                const rect = battlefield.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                createMuzzleFlash(x, y);
+            });
+        }
+
+        function createMuzzleFlash(x, y) {
+            const container = document.getElementById('battlefield');
+            const flash = document.createElement('div');
+            flash.className = 'muzzle-flash';
+            flash.style.left = `${x}px`;
+            flash.style.top = `${y}px`;
+            container.appendChild(flash);
+
+            setTimeout(() => flash.remove(), 150);
+        }
+
+        function startSpawnerLoop() {
+            clearInterval(spawnTimer);
+            spawnTimer = setInterval(() => {
+                if (gameState === 'PLAYING') {
+                    spawnSoldier();
+                }
+            }, spawnIntervalMs);
+        }
+
+        function triggerReinforcements() {
+            reinforcementsArrived = true;
+            spawnIntervalMs = 7500; // Speed up to 1 soldier every 7.5 seconds
+            startSpawnerLoop();
+
+            // Display Reinforcement Alert
+            const alert = document.getElementById('reinforcement-alert');
+            alert.classList.remove('hidden');
+            document.getElementById('spawn-status-text').textContent = 'SPAWN RATE: 1 / 7.5 SEC (REINFORCED)';
+            AudioEngine.playSiren();
+
+            setTimeout(() => {
+                alert.classList.add('hidden');
+            }, 4000);
+        }
+
+        function spawnSoldier() {
+            if (soldiers.length >= 15) return; // Cap at 15
+
+            const soldierId = `soldier-${soldierIdCounter++}`;
+            const soldierObj = {
+                id: soldierId,
+                hp: 2,
+                maxHp: 2,
+                x: Math.floor(Math.random() * 75) + 10, // 10% to 85% width
+                y: Math.floor(Math.random() * 65) + 15  // 15% to 80% height
+            };
+
+            soldiers.push(soldierObj);
+            renderSoldierDOM(soldierObj);
+            updateThreatHUD();
+
+            // Check if 15 troops reached -> Airstrike Defeat
+            if (soldiers.length >= 15) {
+                triggerAirstrikeDefeat();
+            }
+        }
+
+        function renderSoldierDOM(s) {
+            const container = document.getElementById('soldier-container');
+            const elem = document.createElement('div');
+            elem.id = s.id;
+            elem.className = "absolute transition-transform select-none cursor-crosshair group flex flex-col items-center";
+            elem.style.left = `${s.x}%`;
+            elem.style.top = `${s.y}%`;
+            elem.style.zIndex = Math.floor(s.y);
+
+            elem.innerHTML = `
+                <!-- HP Indicators overhead -->
+                <div class="hp-bar flex gap-1 bg-black/70 px-1.5 py-0.5 rounded border border-slate-600 mb-1 shadow">
+                    <div class="hp-pip-1 w-2 h-2 rounded-full bg-emerald-400"></div>
+                    <div class="hp-pip-2 w-2 h-2 rounded-full bg-emerald-400"></div>
+                </div>
+
+                <!-- Detailed SVG German Soldier Sprite -->
+                <div class="soldier-sprite relative w-12 h-16 drop-shadow-lg transition-all duration-100">
+                    <svg viewBox="0 0 60 80" class="w-full h-full">
+                        <!-- German Helmet (Stahlhelm shape) -->
+                        <path d="M 15 22 C 15 10, 45 10, 45 22 C 48 24, 48 28, 45 28 C 42 28, 18 28, 15 28 C 12 28, 12 24, 15 22 Z" fill="#4a5548" stroke="#1f261e" stroke-width="2"/>
+                        <!-- Head -->
+                        <circle cx="30" cy="27" r="7" fill="#d4a373"/>
+                        <!-- Torso / WWII Olive Tunic -->
+                        <path d="M 18 35 L 42 35 L 45 60 L 15 60 Z" fill="#3a4a34" stroke="#1f261e" stroke-width="2"/>
+                        <!-- Belt & Buckle -->
+                        <rect x="18" y="48" width="24" height="4" fill="#1f261e"/>
+                        <rect x="28" y="47" width="4" height="6" fill="#ffb703"/>
+                        <!-- Mauser Rifle -->
+                        <line x1="10" y1="55" x2="52" y2="30" stroke="#5c4033" stroke-width="3"/>
+                        <line x1="45" y1="35" x2="55" y2="28" stroke="#2b2d2f" stroke-width="2"/>
+                        <!-- Legs / Boots -->
+                        <rect x="20" y="60" width="8" height="15" fill="#2b2d2f"/>
+                        <rect x="32" y="60" width="8" height="15" fill="#2b2d2f"/>
+                    </svg>
+                </div>
+            `;
+
+            // Click handler specifically on soldier
+            elem.addEventListener('mousedown', (e) => {
+                e.stopPropagation(); // Prevents double click handling from parent
+                if (gameState === 'WON' || gameState === 'LOST') return;
+
+                if (gameState === 'READY') startGameTimer();
+
+                shotsFired++;
+                shotsHit++;
+                AudioEngine.playGunshot();
+
+                // Create Flash on hit
+                const rect = document.getElementById('battlefield').getBoundingClientRect();
+                createMuzzleFlash(e.clientX - rect.left, e.clientY - rect.top);
+
+                // Reduce HP
+                s.hp--;
+
+                if (s.hp === 1) {
+                    // Hit feedback (HP 1 remaining)
+                    AudioEngine.playHit();
+                    const sprite = elem.querySelector('.soldier-sprite');
+                    sprite.classList.add('soldier-hit');
+                    setTimeout(() => sprite.classList.remove('soldier-hit'), 150);
+
+                    // Update HP Pip colors to Yellow/Red
+                    const pips = elem.querySelectorAll('.hp-bar div');
+                    if (pips.length >= 2) {
+                        pips[1].className = "w-2 h-2 rounded-full bg-slate-600";
+                        pips[0].className = "w-2 h-2 rounded-full bg-red-500 animate-ping";
+                    }
+                } else if (s.hp <= 0) {
+                    // Elimination!
+                    AudioEngine.playDeath();
+                    troopsKilled++;
+                    document.getElementById('kills-counter').textContent = troopsKilled;
+
+                    elem.classList.add('soldier-dying');
+                    setTimeout(() => {
+                        elem.remove();
+                    }, 400);
+
+                    // Remove from soldiers array
+                    soldiers = soldiers.filter(item => item.id !== s.id);
+                    updateThreatHUD();
+                }
+            });
+
+            container.appendChild(elem);
+        }
+
+        function updateThreatHUD() {
+            const count = soldiers.length;
+            document.getElementById('troop-counter').textContent = `${count} / 15`;
+
+            const led = document.getElementById('threat-led');
+            const status = document.getElementById('threat-indicator');
+            const warningBanner = document.getElementById('warning-banner');
+
+            if (count >= 13) {
+                led.className = "w-4 h-4 rounded-full bg-red-600 led-red";
+                status.textContent = "CRITICAL THREAT!";
+                status.className = "text-xs font-bold text-red-500 animate-pulse";
+                warningBanner.classList.remove('hidden');
+            } else if (count >= 10) {
+                led.className = "w-4 h-4 rounded-full bg-yellow-500 led-amber";
+                status.textContent = "HIGH THREAT";
+                status.className = "text-xs font-bold text-yellow-400";
+                warningBanner.classList.add('hidden');
+            } else {
+                led.className = "w-4 h-4 rounded-full bg-emerald-500 led-green";
+                status.textContent = "LOW THREAT";
+                status.className = "text-xs font-bold text-emerald-400";
+                warningBanner.classList.add('hidden');
+            }
+        }
+
+        function triggerAirstrikeDefeat() {
+            gameState = 'LOST';
+            clearInterval(gameTimerInterval);
+            clearInterval(spawnTimer);
+
+            AudioEngine.playSiren();
+
+            // Stuka Flyby Visual
+            const overlay = document.getElementById('airstrike-overlay');
+            const plane = document.getElementById('stuka-plane');
+            overlay.classList.remove('hidden');
+            plane.classList.add('stuka-anim');
+
+            // Screen Shake & Bomb Explosion SFX
+            setTimeout(() => {
+                document.body.classList.add('shake');
+                AudioEngine.playExplosion();
+            }, 800);
+
+            setTimeout(() => {
+                document.body.classList.remove('shake');
+                overlay.classList.add('hidden');
+                plane.classList.remove('stuka-anim');
+
+                showEndModal(false, 'OVERRUN BY GERMAN AIRSTRIKE!');
+            }, 2200);
+        }
+
+
+        /* -----------------------------------------------------------------
+         * 5. CLASSIC MINESWEEPER ENGINE
+         * ----------------------------------------------------------------- */
+        function initMinesweeperBoard() {
+            const gridElem = document.getElementById('minefield-grid');
+            gridElem.innerHTML = '';
+            gridElem.style.gridTemplateColumns = `repeat(${currentDiff.cols}, minmax(0, 1fr))`;
+
+            board = [];
+            for (let r = 0; r < currentDiff.rows; r++) {
+                const row = [];
+                for (let c = 0; c < currentDiff.cols; c++) {
+                    row.push({
+                        r, c,
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        neighborMines: 0
+                    });
+                }
+                board.push(row);
+            }
+
+            // Render DOM Cells
+            for (let r = 0; r < currentDiff.rows; r++) {
+                for (let c = 0; c < currentDiff.cols; c++) {
+                    const cellBtn = document.createElement('button');
+                    cellBtn.id = `cell-${r}-${c}`;
+                    cellBtn.className = getCellClass(false, false);
+
+                    // Click Handlers
+                    cellBtn.addEventListener('click', (e) => handleCellClick(r, c));
+                    cellBtn.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        handleCellRightClick(r, c);
+                    });
+                    cellBtn.addEventListener('dblclick', (e) => handleCellChord(r, c));
+
+                    gridElem.appendChild(cellBtn);
+                }
+            }
+
+            document.getElementById('mines-counter').textContent = String(currentDiff.mines).padStart(3, '0');
+        }
+
+        function getCellClass(isRevealed, isMine) {
+            // Adaptive responsive sizing for expert mode vs easy mode
+            let sizeClass = "w-7 h-7 text-xs md:w-8 md:h-8 md:text-sm";
+            if (currentDiffKey === 'expert') sizeClass = "w-6 h-6 text-[10px] md:w-7 md:h-7 md:text-xs";
+
+            if (!isRevealed) {
+                return `${sizeClass} ms-cell bg-tactical-panel hover:bg-slate-600 border-2 border-t-slate-600 border-l-slate-600 border-b-slate-900 border-r-slate-900 font-bold rounded-sm flex items-center justify-center shadow-sm active:border-none`;
+            } else {
+                return `${sizeClass} ms-cell bg-tactical-bg border border-tactical-border/40 font-bold rounded-sm flex items-center justify-center`;
+            }
+        }
+
+        function generateMines(firstR, firstC) {
+            let minesPlaced = 0;
+            while (minesPlaced < currentDiff.mines) {
+                const r = Math.floor(Math.random() * currentDiff.rows);
+                const c = Math.floor(Math.random() * currentDiff.cols);
+
+                // Ensure safe radius around first click
+                const isFirstClickZone = Math.abs(r - firstR) <= 1 && Math.abs(c - firstC) <= 1;
+
+                if (!board[r][c].isMine && !isFirstClickZone) {
+                    board[r][c].isMine = true;
+                    minesPlaced++;
+                }
+            }
+
+            // Calculate Neighbor Mine Counts
+            for (let r = 0; r < currentDiff.rows; r++) {
+                for (let c = 0; c < currentDiff.cols; c++) {
+                    if (!board[r][c].isMine) {
+                        board[r][c].neighborMines = countNeighborMines(r, c);
+                    }
+                }
+            }
+
+            minesGenerated = true;
+        }
+
+        function countNeighborMines(r, c) {
+            let count = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (nr >= 0 && nr < currentDiff.rows && nc >= 0 && nc < currentDiff.cols) {
+                        if (board[nr][nc].isMine) count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        function handleCellClick(r, c) {
+            if (gameState === 'WON' || gameState === 'LOST') return;
+            const cell = board[r][c];
+            if (cell.isFlagged || cell.isRevealed) return;
+
+            if (gameState === 'READY') startGameTimer();
+
+            // First Click Mine Guarantee
+            if (!minesGenerated) {
+                generateMines(r, c);
+            }
+
+            if (cell.isMine) {
+                // MINE DETONATION LOSS
+                detonateMine(r, c);
+                return;
+            }
+
+            AudioEngine.playClick();
+            revealCell(r, c);
+            checkWinCondition();
+        }
+
+        function revealCell(r, c) {
+            const cell = board[r][c];
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            cell.isRevealed = true;
+            revealedCount++;
+
+            const btn = document.getElementById(`cell-${r}-${c}`);
+            btn.className = getCellClass(true, false);
+
+            if (cell.neighborMines > 0) {
+                btn.textContent = cell.neighborMines;
+                btn.style.color = getNumberColor(cell.neighborMines);
+            } else {
+                btn.textContent = '';
+                // Flood fill auto-reveal empty zero neighbors
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < currentDiff.rows && nc >= 0 && nc < currentDiff.cols) {
+                            if (!board[nr][nc].isRevealed) {
+                                revealCell(nr, nc);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function handleCellRightClick(r, c) {
+            if (gameState === 'WON' || gameState === 'LOST') return;
+            const cell = board[r][c];
+            if (cell.isRevealed) return;
+
+            if (gameState === 'READY') startGameTimer();
+
+            cell.isFlagged = !cell.isFlagged;
+            flagsCount += cell.isFlagged ? 1 : -1;
+
+            const btn = document.getElementById(`cell-${r}-${c}`);
+            if (cell.isFlagged) {
+                btn.textContent = '🚩';
+                AudioEngine.playFlag();
+            } else {
+                btn.textContent = '';
+            }
+
+            const remaining = currentDiff.mines - flagsCount;
+            document.getElementById('mines-counter').textContent = String(remaining).padStart(3, '0');
+        }
+
+        function handleCellChord(r, c) {
+            const cell = board[r][c];
+            if (!cell.isRevealed || cell.neighborMines === 0) return;
+
+            // Count flags around
+            let flagCount = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (nr >= 0 && nr < currentDiff.rows && nc >= 0 && nc < currentDiff.cols) {
+                        if (board[nr][nc].isFlagged) flagCount++;
+                    }
+                }
+            }
+
+            if (flagCount === cell.neighborMines) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < currentDiff.rows && nc >= 0 && nc < currentDiff.cols) {
+                            if (!board[nr][nc].isRevealed && !board[nr][nc].isFlagged) {
+                                handleCellClick(nr, nc);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function detonateMine(hitR, hitC) {
+            gameState = 'LOST';
+            clearInterval(gameTimerInterval);
+            clearInterval(spawnTimer);
+
+            AudioEngine.playExplosion();
+            document.getElementById('face-btn').textContent = '😵';
+
+            // Reveal all mines
+            for (let r = 0; r < currentDiff.rows; r++) {
+                for (let c = 0; c < currentDiff.cols; c++) {
+                    const cell = board[r][c];
+                    const btn = document.getElementById(`cell-${r}-${c}`);
+                    if (cell.isMine) {
+                        btn.className = getCellClass(true, true);
+                        btn.textContent = '💣';
+                        if (r === hitR && c === hitC) {
+                            btn.classList.add('bg-red-600');
+                        }
+                    }
+                }
+            }
+
+            // Screen Shake
+            document.body.classList.add('shake');
+            setTimeout(() => document.body.classList.remove('shake'), 500);
+
+            showEndModal(false, 'MISSION FAILED - MINE DETONATED!');
+        }
+
+        function checkWinCondition() {
+            const totalCells = currentDiff.rows * currentDiff.cols;
+            if (revealedCount === totalCells - currentDiff.mines) {
+                gameState = 'WON';
+                clearInterval(gameTimerInterval);
+                clearInterval(spawnTimer);
+
+                document.getElementById('face-btn').textContent = '😎';
+                showEndModal(true, 'VICTORY - SECTOR SECURED!');
+            }
+        }
+
+        function getNumberColor(num) {
+            const colors = {
+                1: '#3b82f6', // blue
+                2: '#22c55e', // green
+                3: '#ef4444', // red
+                4: '#1e3a8a', // dark blue
+                5: '#800000', // maroon
+                6: '#06b6d4', // cyan
+                7: '#000000', // black
+                8: '#6b7280'  // gray
+            };
+            return colors[num] || '#ffffff';
+        }
+
+
+        /* -----------------------------------------------------------------
+         * 6. MODALS & REPORT DISPLAY
+         * ----------------------------------------------------------------- */
+        function showEndModal(isVictory, titleText) {
+            const modal = document.getElementById('end-modal');
+            modal.classList.remove('hidden');
+
+            document.getElementById('modal-icon').textContent = isVictory ? '🎖️' : '💥';
+            document.getElementById('modal-title').textContent = titleText;
+            document.getElementById('modal-title').className = `font-stencil text-2xl tracking-wide uppercase ${isVictory ? 'text-emerald-400' : 'text-red-500'}`;
+
+            const accuracy = shotsFired > 0 ? Math.round((shotsHit / shotsFired) * 100) : 0;
+            const min = String(Math.floor(gameTime / 60)).padStart(2, '0');
+            const sec = String(gameTime % 60).padStart(2, '0');
+
+            document.getElementById('stat-time').textContent = `${min}:${sec}`;
+            document.getElementById('stat-kills').textContent = `${troopsKilled} TROOPS`;
+            document.getElementById('stat-accuracy').textContent = `${shotsFired} ACC: ${accuracy}%`;
+            document.getElementById('stat-mines').textContent = `${revealedCount} / ${currentDiff.rows * currentDiff.cols - currentDiff.mines}`;
+
+            const outcomeElem = document.getElementById('stat-outcome');
+            outcomeElem.textContent = isVictory ? 'OPERATION SUCCESSFUL' : 'FAILED / KIA';
+            outcomeElem.className = `font-bold font-stencil ${isVictory ? 'text-emerald-400' : 'text-red-500'}`;
+        }
+
+        function toggleEndModal(show) {
+            document.getElementById('end-modal').classList.toggle('hidden', !show);
+        }
+
+        function toggleHelpModal(show) {
+            document.getElementById('help-modal').classList.toggle('hidden', !show);
+        }
+    </script>
+</body>
+</html>
