@@ -320,8 +320,8 @@
             </div>
 
             <!-- Minefield Grid Display Container -->
-            <div class="flex-1 p-3 md:p-4 bg-tactical-panel/50 flex items-center justify-center overflow-auto min-h-[380px]">
-                <div id="minefield-grid-wrapper" class="inline-block p-2 bg-tactical-bg border-2 border-tactical-border rounded-lg shadow-2xl">
+            <div class="flex-1 p-3 md:p-4 bg-tactical-panel/50 flex items-center overflow-auto min-w-0 min-h-[380px]">
+                <div id="minefield-grid-wrapper" class="inline-block shrink-0 mx-auto p-2 bg-tactical-bg border-2 border-tactical-border rounded-lg shadow-2xl">
                     <div id="minefield-grid" class="grid gap-1 select-none">
                         <!-- Minesweeper Cells dynamically generated -->
                     </div>
@@ -675,7 +675,25 @@
             setDifficulty('medium');
         });
 
+        const pendingEffects = new Set();
+
+        function scheduleEffect(callback, delay) {
+            const id = setTimeout(() => {
+                pendingEffects.delete(id);
+                callback();
+            }, delay);
+            pendingEffects.add(id);
+            return id;
+        }
+
         function resetGame() {
+            pendingEffects.forEach(clearTimeout);
+            pendingEffects.clear();
+            document.querySelectorAll('.muzzle-flash, .spark-particle').forEach(el => el.remove());
+            document.body.classList.remove('shake');
+            document.getElementById('airstrike-overlay').classList.add('hidden');
+            document.getElementById('stuka-plane').classList.remove('stuka-anim');
+            toggleEndModal(false);
             // Clear Intervals
             clearInterval(gameTimerInterval);
             clearInterval(spawnTimer);
@@ -729,7 +747,7 @@
         }
 
         function startGameTimer() {
-            if (gameState === 'PLAYING') return;
+            if (gameState !== 'READY') return;
             gameState = 'PLAYING';
 
             // Main Game Loop Timer (1 sec tick)
@@ -767,7 +785,8 @@
          * ----------------------------------------------------------------- */
         function initBattlefieldClickListener() {
             const battlefield = document.getElementById('battlefield');
-            battlefield.addEventListener('mousedown', (e) => {
+            battlefield.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || !e.isPrimary) return;
                 if (gameState === 'WON' || gameState === 'LOST') return;
 
                 // Start game if first action
@@ -793,7 +812,7 @@
             flash.style.top = `${y}px`;
             container.appendChild(flash);
 
-            setTimeout(() => flash.remove(), 150);
+            scheduleEffect(() => flash.remove(), 150);
         }
 
         function startSpawnerLoop() {
@@ -816,7 +835,7 @@
             document.getElementById('spawn-status-text').textContent = 'SPAWN RATE: 1 / 7.5 SEC (REINFORCED)';
             AudioEngine.playSiren();
 
-            setTimeout(() => {
+            scheduleEffect(() => {
                 alert.classList.add('hidden');
             }, 4000);
         }
@@ -882,8 +901,10 @@
             `;
 
             // Click handler specifically on soldier
-            elem.addEventListener('mousedown', (e) => {
-                e.stopPropagation(); // Prevents double click handling from parent
+            elem.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || !e.isPrimary) return;
+                e.stopPropagation();
+                if (s.hp <= 0) return; // Prevents double click handling from parent
                 if (gameState === 'WON' || gameState === 'LOST') return;
 
                 if (gameState === 'READY') startGameTimer();
@@ -904,7 +925,7 @@
                     AudioEngine.playHit();
                     const sprite = elem.querySelector('.soldier-sprite');
                     sprite.classList.add('soldier-hit');
-                    setTimeout(() => sprite.classList.remove('soldier-hit'), 150);
+                    scheduleEffect(() => sprite.classList.remove('soldier-hit'), 150);
 
                     // Update HP Pip colors to Yellow/Red
                     const pips = elem.querySelectorAll('.hp-bar div');
@@ -919,7 +940,7 @@
                     document.getElementById('kills-counter').textContent = troopsKilled;
 
                     elem.classList.add('soldier-dying');
-                    setTimeout(() => {
+                    scheduleEffect(() => {
                         elem.remove();
                     }, 400);
 
@@ -972,12 +993,12 @@
             plane.classList.add('stuka-anim');
 
             // Screen Shake & Bomb Explosion SFX
-            setTimeout(() => {
+            scheduleEffect(() => {
                 document.body.classList.add('shake');
                 AudioEngine.playExplosion();
             }, 800);
 
-            setTimeout(() => {
+            scheduleEffect(() => {
                 document.body.classList.remove('shake');
                 overlay.classList.add('hidden');
                 plane.classList.remove('stuka-anim');
@@ -993,7 +1014,7 @@
         function initMinesweeperBoard() {
             const gridElem = document.getElementById('minefield-grid');
             gridElem.innerHTML = '';
-            gridElem.style.gridTemplateColumns = `repeat(${currentDiff.cols}, minmax(0, 1fr))`;
+            gridElem.style.gridTemplateColumns = `repeat(${currentDiff.cols}, max-content)`;
 
             board = [];
             for (let r = 0; r < currentDiff.rows; r++) {
@@ -1162,6 +1183,7 @@
         }
 
         function handleCellChord(r, c) {
+            if (gameState !== 'PLAYING') return;
             const cell = board[r][c];
             if (!cell.isRevealed || cell.neighborMines === 0) return;
 
@@ -1217,7 +1239,7 @@
 
             // Screen Shake
             document.body.classList.add('shake');
-            setTimeout(() => document.body.classList.remove('shake'), 500);
+            scheduleEffect(() => document.body.classList.remove('shake'), 500);
 
             showEndModal(false, 'MISSION FAILED - MINE DETONATED!');
         }
@@ -1239,11 +1261,11 @@
                 1: '#3b82f6', // blue
                 2: '#22c55e', // green
                 3: '#ef4444', // red
-                4: '#1e3a8a', // dark blue
-                5: '#800000', // maroon
+                4: '#a5b4fc', // dark blue
+                5: '#fda4af', // maroon
                 6: '#06b6d4', // cyan
-                7: '#000000', // black
-                8: '#6b7280'  // gray
+                7: '#f1f5f9', // black
+                8: '#cbd5e1'  // gray
             };
             return colors[num] || '#ffffff';
         }

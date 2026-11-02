@@ -342,8 +342,8 @@
             </div>
 
             <!-- Minefield Grid Display Container -->
-            <div class="flex-1 p-3 md:p-4 bg-tactical-panel/50 flex items-center justify-center overflow-auto min-h-[380px]">
-                <div id="minefield-grid-wrapper" class="inline-block p-2 bg-tactical-bg border-2 border-tactical-border rounded-lg shadow-2xl">
+            <div class="flex-1 p-3 md:p-4 bg-tactical-panel/50 flex items-center overflow-auto min-w-0 min-h-[380px]">
+                <div id="minefield-grid-wrapper" class="inline-block shrink-0 mx-auto p-2 bg-tactical-bg border-2 border-tactical-border rounded-lg shadow-2xl">
                     <div id="minefield-grid" class="grid gap-1 select-none">
                         <!-- Minesweeper Cells generated dynamically -->
                     </div>
@@ -760,7 +760,25 @@
             startPhysicsLoop();
         });
 
+        const pendingEffects = new Set();
+
+        function scheduleEffect(callback, delay) {
+            const id = setTimeout(() => {
+                pendingEffects.delete(id);
+                callback();
+            }, delay);
+            pendingEffects.add(id);
+            return id;
+        }
+
         function resetGame() {
+            pendingEffects.forEach(clearTimeout);
+            pendingEffects.clear();
+            document.querySelectorAll('.muzzle-flash, .spark-particle').forEach(el => el.remove());
+            document.body.classList.remove('shake');
+            document.getElementById('airstrike-overlay').classList.add('hidden');
+            document.getElementById('stuka-plane').classList.remove('stuka-anim');
+            toggleEndModal(false);
             // Stop Loops & Intervals
             clearInterval(gameTimerInterval);
             clearInterval(spawnTimer);
@@ -816,7 +834,7 @@
         }
 
         function startGameTimer() {
-            if (gameState === 'PLAYING') return;
+            if (gameState !== 'READY') return;
             gameState = 'PLAYING';
 
             // Main Game Loop Timer (1 sec tick)
@@ -867,7 +885,8 @@
          * ----------------------------------------------------------------- */
         function initBattlefieldClickListener() {
             const battlefield = document.getElementById('battlefield');
-            battlefield.addEventListener('mousedown', (e) => {
+            battlefield.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || !e.isPrimary) return;
                 if (gameState === 'WON' || gameState === 'LOST') return;
                 if (gameState === 'READY') startGameTimer();
 
@@ -887,7 +906,7 @@
             flash.style.top = `${y}px`;
             container.appendChild(flash);
 
-            setTimeout(() => flash.remove(), 150);
+            scheduleEffect(() => flash.remove(), 150);
         }
 
         function createSparkEffect(x, y) {
@@ -907,7 +926,7 @@
                 spark.style.setProperty('--dy', `${dy}px`);
 
                 container.appendChild(spark);
-                setTimeout(() => spark.remove(), 250);
+                scheduleEffect(() => spark.remove(), 250);
             }
         }
 
@@ -933,7 +952,7 @@
             alert.classList.remove('hidden');
             AudioEngine.playSiren();
 
-            setTimeout(() => alert.classList.add('hidden'), 4500);
+            scheduleEffect(() => alert.classList.add('hidden'), 4500);
         }
 
         function triggerWave2Reinforcements() {
@@ -949,7 +968,7 @@
             alert.classList.remove('hidden');
             AudioEngine.playSiren();
 
-            setTimeout(() => alert.classList.add('hidden'), 4500);
+            scheduleEffect(() => alert.classList.add('hidden'), 4500);
         }
 
         function spawnSoldier() {
@@ -975,7 +994,7 @@
                 hp = 4;
                 armorType = 'titanium';
                 // 50% faster movement velocity
-                const speed = 11; // % per second
+                const speed = 10.5; // % per second
                 const angle = Math.random() * Math.PI * 2;
                 vx = Math.cos(angle) * speed;
                 vy = Math.sin(angle) * speed;
@@ -1071,13 +1090,16 @@
             `;
 
             // Click Handler for shooting soldier
-            elem.addEventListener('mousedown', (e) => {
+            elem.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || !e.isPrimary) return;
                 e.stopPropagation();
+                if (s.hp <= 0) return;
                 if (gameState === 'WON' || gameState === 'LOST') return;
                 if (gameState === 'READY') startGameTimer();
 
                 shotsFired++;
                 shotsHit++;
+                AudioEngine.playGunshot();
 
                 const rect = document.getElementById('battlefield').getBoundingClientRect();
                 const clickX = e.clientX - rect.left;
@@ -1092,12 +1114,12 @@
 
                     const sprite = elem.querySelector('.soldier-sprite');
                     sprite.classList.add('armor-ricochet-flash');
-                    setTimeout(() => sprite.classList.remove('armor-ricochet-flash'), 150);
+                    scheduleEffect(() => sprite.classList.remove('armor-ricochet-flash'), 150);
                 } else {
                     AudioEngine.playHit();
                     const sprite = elem.querySelector('.soldier-sprite');
                     sprite.classList.add('soldier-hit');
-                    setTimeout(() => sprite.classList.remove('soldier-hit'), 150);
+                    scheduleEffect(() => sprite.classList.remove('soldier-hit'), 150);
                 }
 
                 s.hp--;
@@ -1119,7 +1141,7 @@
                     document.getElementById('kills-counter').textContent = troopsKilled;
 
                     elem.classList.add('soldier-dying');
-                    setTimeout(() => elem.remove(), 400);
+                    scheduleEffect(() => elem.remove(), 400);
 
                     soldiers = soldiers.filter(item => item.id !== s.id);
                     updateThreatHUD();
@@ -1133,7 +1155,7 @@
         function startPhysicsLoop() {
             function updatePhysics(timestamp) {
                 if (!lastAnimTime) lastAnimTime = timestamp;
-                const dt = (timestamp - lastAnimTime) / 1000; // in seconds
+                const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.05); // in seconds
                 lastAnimTime = timestamp;
 
                 if (gameState === 'PLAYING') {
@@ -1201,12 +1223,12 @@
             overlay.classList.remove('hidden');
             plane.classList.add('stuka-anim');
 
-            setTimeout(() => {
+            scheduleEffect(() => {
                 document.body.classList.add('shake');
                 AudioEngine.playExplosion();
             }, 800);
 
-            setTimeout(() => {
+            scheduleEffect(() => {
                 document.body.classList.remove('shake');
                 overlay.classList.add('hidden');
                 plane.classList.remove('stuka-anim');
@@ -1222,7 +1244,7 @@
         function initMinesweeperBoard() {
             const gridElem = document.getElementById('minefield-grid');
             gridElem.innerHTML = '';
-            gridElem.style.gridTemplateColumns = `repeat(${currentDiff.cols}, minmax(0, 1fr))`;
+            gridElem.style.gridTemplateColumns = `repeat(${currentDiff.cols}, max-content)`;
 
             board = [];
             for (let r = 0; r < currentDiff.rows; r++) {
@@ -1384,6 +1406,7 @@
         }
 
         function handleCellChord(r, c) {
+            if (gameState !== 'PLAYING') return;
             const cell = board[r][c];
             if (!cell.isRevealed || cell.neighborMines === 0) return;
 
@@ -1436,7 +1459,7 @@
             }
 
             document.body.classList.add('shake');
-            setTimeout(() => document.body.classList.remove('shake'), 500);
+            scheduleEffect(() => document.body.classList.remove('shake'), 500);
 
             showEndModal(false, 'MISSION FAILED - MINE DETONATED!');
         }
@@ -1458,11 +1481,11 @@
                 1: '#3b82f6',
                 2: '#22c55e',
                 3: '#ef4444',
-                4: '#1e3a8a',
-                5: '#800000',
+                4: '#a5b4fc',
+                5: '#fda4af',
                 6: '#06b6d4',
-                7: '#000000',
-                8: '#6b7280'
+                7: '#f1f5f9',
+                8: '#cbd5e1'
             };
             return colors[num] || '#ffffff';
         }
