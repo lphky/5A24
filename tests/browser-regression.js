@@ -12,7 +12,7 @@
     };
     for (const key of ['easy', 'medium', 'expert']) {
         setDifficulty(key);
-        check(`${key}: board dimensions`, document.querySelectorAll('.ms-cell').length === currentDiff.rows * currentDiff.cols);
+        check(`${key}: board dimensions`, document.querySelectorAll('#minefield-grid button').length === currentDiff.rows * currentDiff.cols);
         handleCellClick(0, 0);
         check(`${key}: mine count`, board.flat().filter(cell => cell.isMine).length === currentDiff.mines);
         check(`${key}: safe first click`, board[0][0].isRevealed && board[0][0].neighborMines === 0);
@@ -58,14 +58,48 @@
     }
     check('all safe cells win', gameState === 'WON' && revealedCount === 71);
     resetGame();
-    if (typeof currentWave !== 'undefined') {
+    if (typeof triggerWave === 'function') {
         startGameTimer();
-        triggerWave1Reinforcements();
+        triggerWave(1);
         spawnSoldier();
-        check('wave 1 armor and speed', soldiers[1].hp === 3 && Math.abs(Math.hypot(soldiers[1].vx, soldiers[1].vy) - 7) < 0.001);
-        triggerWave2Reinforcements();
+        const s1 = soldiers[soldiers.length - 1];
+        check('wave 1 armor and speed', s1.hp === 3 && Math.abs(Math.hypot(s1.vx, s1.vy) - 8) < 0.001);
+        triggerWave(2);
         spawnSoldier();
-        check('wave 2 is 50 percent faster', soldiers[2].hp === 4 && Math.abs(Math.hypot(soldiers[2].vx, soldiers[2].vy) - 10.5) < 0.001);
+        const s2 = soldiers[soldiers.length - 1];
+        check('wave 2 is 50 percent faster', s2.hp === 4 && Math.abs(Math.hypot(s2.vx, s2.vy) - 12) < 0.001);
+        resetGame();
+        setDifficulty('easy');
+        handleCellClick(0, 0);
+        const wrong = board.flat().find(cell => !cell.isMine && !cell.isRevealed);
+        handleCellRightClick(wrong.r, wrong.c);
+        intelCount = 1;
+        isIntelMode = true;
+        useIntelligence(wrong.r, wrong.c);
+        const area = board.flat().filter(cell => Math.abs(cell.r - wrong.r) <= 1 && Math.abs(cell.c - wrong.c) <= 1);
+        check('intel clears wrong flag and reveals safe cells', wrong.isRevealed && !wrong.isFlagged && area.every(cell => cell.isMine ? cell.isFlagged : cell.isRevealed) && intelCount === 0 && !isIntelMode);
+        check('mine counter matches flags', document.getElementById('mines-counter').textContent === formatCounter(10 - flagsCount));
+        resetGame();
+        handleCellClick(0, 0);
+        const spare = board.flat().filter(cell => !cell.isRevealed).slice(0, 12);
+        spare.forEach(cell => handleCellRightClick(cell.r, cell.c));
+        check('negative mine counter readable', document.getElementById('mines-counter').textContent === '-02');
+        resetGame();
+        spawnSpy();
+        const spy = spies[0];
+        shoot(document.getElementById(spy.id), 2);
+        check('right click does not scare spy', spies.length === 1);
+        shoot(document.getElementById(spy.id));
+        check('clicking spy removes it without shot count', spies.length === 0 && shotsFired === 0);
+        isFlagMode = false;
+        resetGame();
+        const cellBtn = document.getElementById('cell-4-4');
+        cellBtn.dispatchEvent(new Event('touchstart'));
+        await new Promise(resolve => setTimeout(resolve, 400));
+        cellBtn.dispatchEvent(new Event('touchend'));
+        cellBtn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        cellBtn.click();
+        check('long press flags once despite contextmenu and click', board[4][4].isFlagged && flagsCount === 1);
         resetGame();
     }
     return { page: location.pathname, count: passed.length, passed };
